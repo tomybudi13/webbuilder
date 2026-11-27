@@ -1,0 +1,6 @@
+{
+  "name": "Rancang Studio",
+  "description": "Web builder visual drag-and-drop dengan integrasi AI untuk memilih template kustom dan menghasilkan tata letak secara otomatis.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
