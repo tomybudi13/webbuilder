@@ -15,6 +15,7 @@ import {
   BuilderProject,
   BuilderSection,
   CustomTemplate,
+  FloatingCanvasElement,
   PageTheme,
   SectionType,
   UploadedBackground,
@@ -90,6 +91,7 @@ export default function App() {
   );
   const [sidebarTab, setSidebarTab] = useState<SidebarTab>('blocks');
   const [selectedId, setSelectedId] = useState<string | null>(null);
+  const [selectedElementKey, setSelectedElementKey] = useState<string | null>(null);
   const [device, setDevice] = useState<ViewportDevice>('desktop');
   const [isPreviewMode, setIsPreviewMode] = useState(false);
 
@@ -140,6 +142,7 @@ export default function App() {
     setFuture((prev) => [project, ...prev]);
     setProject(previous);
     setSelectedId(null);
+    setSelectedElementKey(null);
   };
 
   const handleRedo = () => {
@@ -149,6 +152,17 @@ export default function App() {
     setHistory((prev) => [...prev, project]);
     setProject(next);
     setSelectedId(null);
+    setSelectedElementKey(null);
+  };
+
+  const handleSelectElement = (key: string | null) => {
+    setSelectedElementKey(key);
+    if (key && key.includes(':')) {
+      const sectionPrefix = key.split(':')[0];
+      if (sectionPrefix) {
+        setSelectedId(sectionPrefix);
+      }
+    }
   };
 
   const handleAddBlock = (type: SectionType, insertIndex?: number) => {
@@ -193,17 +207,28 @@ export default function App() {
       id: createId(original.type),
       items: original.items?.map((it) => ({ ...it, id: createId('item') })),
       links: original.links?.map((l) => ({ ...l })),
+      elementTransforms: original.elementTransforms
+        ? { ...original.elementTransforms }
+        : undefined,
+      floatingElements: original.floatingElements?.map((fe) => ({
+        ...fe,
+        id: createId('fl'),
+      })),
     };
     const nextSections = [...project.sections];
     nextSections.splice(idx + 1, 0, cloned);
     commitProject({ ...project, sections: nextSections });
     setSelectedId(cloned.id);
+    setSelectedElementKey(null);
   };
 
   const handleDeleteSection = (id: string) => {
     const nextSections = project.sections.filter((s) => s.id !== id);
     commitProject({ ...project, sections: nextSections });
-    if (selectedId === id) setSelectedId(null);
+    if (selectedId === id) {
+      setSelectedId(null);
+      setSelectedElementKey(null);
+    }
   };
 
   const handleUpdateSection = (id: string, patch: Partial<BuilderSection>) => {
@@ -211,6 +236,59 @@ export default function App() {
       ...prev,
       sections: prev.sections.map((s) => (s.id === id ? { ...s, ...patch } : s)),
     }));
+  };
+
+  const handleAddOrDropFloatingElement = (
+    sectionId: string | null,
+    kind: FloatingCanvasElement['kind'],
+    x?: number,
+    y?: number
+  ) => {
+    const newEl: FloatingCanvasElement = {
+      id: createId('fl'),
+      kind,
+      x: x ?? 48 + Math.round(Math.random() * 40),
+      y: y ?? 36 + Math.round(Math.random() * 30),
+      text: kind === 'text' ? 'Teks Baru' : kind === 'button' ? 'Klik Di Sini' : undefined,
+      icon: kind === 'icon' ? 'sparkles' : undefined,
+      imageUrl: kind === 'image' ? STUDIO_IMAGES[1].url : undefined,
+      buttonShape: kind === 'button' ? project.theme.buttonShape : undefined,
+      width: kind === 'image' ? 100 : undefined,
+      fontSize: kind === 'text' ? 0 : undefined,
+    };
+
+    if (project.sections.length === 0) {
+      const heroTemplate = BLOCK_CATALOG.find((b) => b.type === 'hero');
+      if (!heroTemplate) return;
+      const freshHero = heroTemplate.create();
+      freshHero.floatingElements = [newEl];
+      commitProject({ ...project, sections: [freshHero] });
+      setSelectedId(freshHero.id);
+      setSelectedElementKey(`${freshHero.id}:float_${newEl.id}`);
+      return;
+    }
+
+    const target =
+      (sectionId && project.sections.find((s) => s.id === sectionId)) ||
+      (selectedId && project.sections.find((s) => s.id === selectedId)) ||
+      project.sections.find((s) => s.type !== 'navbar') ||
+      project.sections[0];
+
+    if (!target) return;
+
+    commitProject({
+      ...project,
+      sections: project.sections.map((s) =>
+        s.id === target.id
+          ? {
+              ...s,
+              floatingElements: [...(s.floatingElements || []), newEl],
+            }
+          : s
+      ),
+    });
+    setSelectedId(target.id);
+    setSelectedElementKey(`${target.id}:float_${newEl.id}`);
   };
 
   const handleDropBackgroundOnSection = (
@@ -295,6 +373,7 @@ export default function App() {
       sections: clonedSections,
     });
     setSelectedId(null);
+    setSelectedElementKey(null);
     setIsPreviewMode(false);
   };
 
@@ -361,6 +440,7 @@ export default function App() {
         });
       }
       setSelectedId(null);
+      setSelectedElementKey(null);
       setIsPreviewMode(false);
     } catch (err) {
       setAiError(err instanceof Error ? err.message : 'Terjadi gangguan koneksi AI.');
@@ -483,7 +563,10 @@ export default function App() {
           </button>
           <button
             type="button"
-            onClick={() => setIsPreviewMode((prev) => !prev)}
+            onClick={() => {
+              setSelectedElementKey(null);
+              setIsPreviewMode((prev) => !prev);
+            }}
             className={`text-sm font-medium whitespace-nowrap shrink-0 transition-colors ${
               isPreviewMode
                 ? 'text-blue-600 underline underline-offset-8 decoration-2'
@@ -512,6 +595,7 @@ export default function App() {
             activeTab={sidebarTab}
             onTabChange={setSidebarTab}
             onAddBlock={(type) => handleAddBlock(type)}
+            onAddFloatingElement={(kind) => handleAddOrDropFloatingElement(selectedId, kind)}
             templates={allTemplates}
             onApplyTemplate={handleApplyTemplate}
             onDeleteCustomTemplate={handleDeleteCustomTemplate}
@@ -555,6 +639,12 @@ export default function App() {
           theme={project.theme}
           selectedId={selectedId}
           onSelectSection={setSelectedId}
+          selectedElementKey={selectedElementKey}
+          onSelectElement={handleSelectElement}
+          onUpdateSection={handleUpdateSection}
+          onDropFloatingElement={(sId, kind, x, y) =>
+            handleAddOrDropFloatingElement(sId, kind, x, y)
+          }
           device={device}
           onChangeDevice={setDevice}
           isPreviewMode={isPreviewMode}
@@ -566,6 +656,7 @@ export default function App() {
           onClearCanvas={() => {
             commitProject({ ...project, sections: [] });
             setSelectedId(null);
+            setSelectedElementKey(null);
           }}
           onDropNewBlock={handleAddBlock}
           onDropBackgroundOnSection={handleDropBackgroundOnSection}

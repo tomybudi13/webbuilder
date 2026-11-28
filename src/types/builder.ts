@@ -29,6 +29,28 @@ export type NavLinkStyle = 'plain' | 'underline' | 'boxed' | 'pill';
 export type BackgroundPattern = 'none' | 'grid' | 'dots' | 'gradient-soft' | 'gradient-warm';
 export type BackgroundOverlay = 'none' | 'dark' | 'light';
 
+export interface ElementTransform {
+  x: number;
+  y: number;
+  scale?: number;
+  widthPct?: number;
+  fontSizeDelta?: number;
+}
+
+export interface FloatingCanvasElement {
+  id: string;
+  kind: 'text' | 'icon' | 'button' | 'image';
+  x: number;
+  y: number;
+  text?: string;
+  icon?: string;
+  imageUrl?: string;
+  buttonShape?: ButtonShape;
+  fontSize?: number;
+  width?: number;
+  color?: string;
+}
+
 export interface NavLinkItem {
   label: string;
   href: string;
@@ -73,6 +95,8 @@ export interface BuilderSection {
   backgroundPattern?: BackgroundPattern;
   links?: NavLinkItem[];
   items?: SectionItem[];
+  elementTransforms?: Record<string, ElementTransform>;
+  floatingElements?: FloatingCanvasElement[];
 }
 
 export interface PageTheme {
@@ -107,4 +131,3 @@ export interface UploadedBackground {
   recommendedOverlay: BackgroundOverlay;
   url: string;
 }
-

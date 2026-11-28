@@ -195,6 +195,28 @@ export interface SectionItem {
   highlighted?: boolean;
 }
 
+export interface ElementTransform {
+  x: number;
+  y: number;
+  scale?: number;
+  widthPct?: number;
+  fontSizeDelta?: number;
+}
+
+export interface FloatingCanvasElement {
+  id: string;
+  kind: 'text' | 'icon' | 'button' | 'image';
+  x: number;
+  y: number;
+  text?: string;
+  icon?: string;
+  imageUrl?: string;
+  buttonShape?: 'square' | 'rounded' | 'pill' | 'outline' | 'pill-outline' | 'soft' | 'ghost';
+  fontSize?: number;
+  width?: number;
+  color?: string;
+}
+
 export interface PageSection {
   id: string;
   type: 'navbar' | 'hero' | 'features' | 'split' | 'pricing' | 'testimonials' | 'faq' | 'cta' | 'footer';
@@ -221,6 +243,8 @@ export interface PageSection {
   backgroundPattern?: 'none' | 'grid' | 'dots' | 'gradient-soft' | 'gradient-warm';
   links?: NavLinkItem[];
   items?: SectionItem[];
+  elementTransforms?: Record<string, ElementTransform>;
+  floatingElements?: FloatingCanvasElement[];
 }
 
 export interface PageTheme {
@@ -440,6 +464,28 @@ export const PageSections: React.FC<{ section: PageSection; theme: PageTheme }> 
           ? \`px-3.5 py-1.5 text-xs font-medium rounded-full \${isDark ? 'bg-slate-800' : 'bg-slate-100'} whitespace-nowrap\`
           : \`text-sm font-medium \${surface.muted} hover:opacity-80 whitespace-nowrap\`;
 
+  const trStyle = (
+    key: string,
+    extra?: React.CSSProperties,
+    opts?: { baseFontPx?: number; allowWidth?: boolean }
+  ): React.CSSProperties | undefined => {
+    const t = section.elementTransforms?.[key];
+    if (!t && !extra) return undefined;
+    const style: React.CSSProperties = { ...extra };
+    if (t) {
+      if (t.x || t.y) {
+        style.transform = \`translate(\${t.x || 0}px, \${t.y || 0}px)\`;
+      }
+      if (opts?.allowWidth && t.widthPct && t.widthPct !== 100) {
+        style.width = \`\${t.widthPct}%\`;
+      }
+      if (opts?.baseFontPx && t.fontSizeDelta) {
+        style.fontSize = \`\${Math.max(11, opts.baseFontPx + t.fontSizeDelta)}px\`;
+      }
+    }
+    return Object.keys(style).length > 0 ? style : undefined;
+  };
+
   return (
     <div
       style={{ fontFamily: fonts.body }}
@@ -462,12 +508,76 @@ export const PageSections: React.FC<{ section: PageSection; theme: PageTheme }> 
         </>
       )}
 
+      {(section.floatingElements || []).map((el) => {
+        const floatBtn = getButtonProps(
+          el.buttonShape || btnShape,
+          accent.hex,
+          accent.softBg,
+          accent.softText,
+          isDark,
+          true
+        );
+        const posStyle: React.CSSProperties = {
+          position: 'absolute',
+          left: 0,
+          top: 0,
+          zIndex: 25,
+          transform: \`translate(\${el.x || 0}px, \${el.y || 0}px)\`,
+        };
+        if (el.kind === 'text') {
+          return (
+            <div
+              key={el.id}
+              style={{
+                ...posStyle,
+                fontFamily: fonts.heading,
+                fontSize: \`\${Math.max(12, 18 + (el.fontSize || 0))}px\`,
+              }}
+              className="font-semibold px-2 py-1"
+            >
+              {el.text || 'Teks Baru'}
+            </div>
+          );
+        }
+        if (el.kind === 'button') {
+          return (
+            <a key={el.id} href="#aksi" style={{ ...posStyle, ...floatBtn.style }} className={floatBtn.className}>
+              {el.text || 'Klik Di Sini'}
+            </a>
+          );
+        }
+        if (el.kind === 'icon') {
+          return (
+            <div
+              key={el.id}
+              style={{ ...posStyle, color: el.color || accent.hex }}
+              className="p-2 rounded-lg bg-white/85 border border-slate-200 shadow-xs"
+            >
+              {renderIcon(el.icon || 'sparkles', 'w-7 h-7')}
+            </div>
+          );
+        }
+        return (
+          <div
+            key={el.id}
+            style={{ ...posStyle, width: \`\${Math.max(120, Math.round(((el.width || 100) / 100) * 220))}px\` }}
+          >
+            <img
+              src={el.imageUrl || ''}
+              alt="Gambar bebas"
+              referrerPolicy="no-referrer"
+              className={\`w-full h-36 object-cover \${rad} border \${surface.border} shadow-sm\`}
+            />
+          </div>
+        );
+      })}
+
       <div className="relative z-10">
         {section.type === 'navbar' && (
           <header className="max-w-6xl mx-auto px-6 py-4 flex items-center justify-between gap-8">
             <a
               href="#"
-              style={{ fontFamily: fonts.heading }}
+              style={trStyle('brand', { fontFamily: fonts.heading })}
               className="text-lg font-bold tracking-tight whitespace-nowrap flex items-center gap-2"
             >
               {section.brandIcon && (
@@ -477,13 +587,13 @@ export const PageSections: React.FC<{ section: PageSection; theme: PageTheme }> 
             </a>
             <nav className="hidden md:flex items-center gap-4">
               {(section.links || []).map((l, idx) => (
-                <a key={idx} href={l.href} className={navLinkClass}>
+                <a key={idx} href={l.href} style={trStyle(\`link_\${idx}\`)} className={navLinkClass}>
                   {l.label}
                 </a>
               ))}
             </nav>
             {section.primaryCta && (
-              <a href="#kontak" style={primaryBtn.style} className={primaryBtn.className}>
+              <a href="#kontak" style={trStyle('navCta', primaryBtn.style)} className={primaryBtn.className}>
                 <span>{section.primaryCta}</span>
                 {renderIcon(section.ctaIcon, 'w-3.5 h-3.5')}
               </a>
@@ -496,27 +606,27 @@ export const PageSections: React.FC<{ section: PageSection; theme: PageTheme }> 
             {section.variant === 'centered' || !section.imageUrl ? (
               <div className="max-w-3xl mx-auto text-center">
                 {section.kicker && (
-                  <p className="text-xs font-semibold tracking-wide mb-3" style={{ color: isDark ? '#93c5fd' : accent.hex }}>
+                  <p className="text-xs font-semibold tracking-wide mb-3" style={trStyle('kicker', { color: isDark ? '#93c5fd' : accent.hex }, { baseFontPx: 12 })}>
                     {section.kicker}
                   </p>
                 )}
-                <h1 style={{ fontFamily: fonts.heading }} className="text-4xl md:text-5xl font-bold tracking-tight mb-5">
+                <h1 style={trStyle('title', { fontFamily: fonts.heading }, { baseFontPx: 44 })} className="text-4xl md:text-5xl font-bold tracking-tight mb-5">
                   {section.title}
                 </h1>
                 {section.subtitle && (
-                  <p className={\`text-base md:text-lg \${surface.muted} max-w-2xl mx-auto mb-8 leading-relaxed\`}>
+                  <p style={trStyle('subtitle', undefined, { baseFontPx: 17 })} className={\`text-base md:text-lg \${surface.muted} max-w-2xl mx-auto mb-8 leading-relaxed\`}>
                     {section.subtitle}
                   </p>
                 )}
                 <div className="flex flex-wrap items-center justify-center gap-3">
                   {section.primaryCta && (
-                    <a href="#aksi" style={primaryBtn.style} className={primaryBtn.className}>
+                    <a href="#aksi" style={trStyle('primaryCta', primaryBtn.style)} className={primaryBtn.className}>
                       <span>{section.primaryCta}</span>
                       {renderIcon(section.ctaIcon, 'w-4 h-4')}
                     </a>
                   )}
                   {section.secondaryCta && (
-                    <a href="#detail" className={\`px-5 py-2.5 text-sm font-semibold border \${surface.border} \${secBtnRad}\`}>
+                    <a href="#detail" style={trStyle('secondaryCta')} className={\`px-5 py-2.5 text-sm font-semibold border \${surface.border} \${secBtnRad}\`}>
                       {section.secondaryCta}
                     </a>
                   )}
@@ -526,31 +636,31 @@ export const PageSections: React.FC<{ section: PageSection; theme: PageTheme }> 
               <div className="grid grid-cols-1 lg:grid-cols-12 gap-10 items-center">
                 <div className={\`lg:col-span-6 \${section.variant === 'split-left' ? 'lg:order-2' : ''}\`}>
                   {section.kicker && (
-                    <p className="text-xs font-semibold tracking-wide mb-3" style={{ color: isDark ? '#93c5fd' : accent.hex }}>
+                    <p className="text-xs font-semibold tracking-wide mb-3" style={trStyle('kicker', { color: isDark ? '#93c5fd' : accent.hex }, { baseFontPx: 12 })}>
                       {section.kicker}
                     </p>
                   )}
-                  <h1 style={{ fontFamily: fonts.heading }} className="text-3xl md:text-5xl font-bold tracking-tight mb-4">
+                  <h1 style={trStyle('title', { fontFamily: fonts.heading }, { baseFontPx: 42 })} className="text-3xl md:text-5xl font-bold tracking-tight mb-4">
                     {section.title}
                   </h1>
                   {section.subtitle && (
-                    <p className={\`text-base \${surface.muted} mb-7 leading-relaxed\`}>{section.subtitle}</p>
+                    <p style={trStyle('subtitle', undefined, { baseFontPx: 16 })} className={\`text-base \${surface.muted} mb-7 leading-relaxed\`}>{section.subtitle}</p>
                   )}
                   <div className="flex flex-wrap items-center gap-3">
                     {section.primaryCta && (
-                      <a href="#aksi" style={primaryBtn.style} className={primaryBtn.className}>
+                      <a href="#aksi" style={trStyle('primaryCta', primaryBtn.style)} className={primaryBtn.className}>
                         <span>{section.primaryCta}</span>
                         {renderIcon(section.ctaIcon, 'w-4 h-4')}
                       </a>
                     )}
                     {section.secondaryCta && (
-                      <a href="#detail" className={\`px-5 py-2.5 text-sm font-semibold border \${surface.border} \${secBtnRad}\`}>
+                      <a href="#detail" style={trStyle('secondaryCta')} className={\`px-5 py-2.5 text-sm font-semibold border \${surface.border} \${secBtnRad}\`}>
                         {section.secondaryCta}
                       </a>
                     )}
                   </div>
                 </div>
-                <div className={\`lg:col-span-6 \${section.variant === 'split-left' ? 'lg:order-1' : ''}\`}>
+                <div style={trStyle('image', undefined, { allowWidth: true })} className={\`lg:col-span-6 \${section.variant === 'split-left' ? 'lg:order-1' : ''}\`}>
                   <img
                     src={section.imageUrl}
                     alt={section.imageAlt || section.title}
@@ -567,18 +677,18 @@ export const PageSections: React.FC<{ section: PageSection; theme: PageTheme }> 
           <section className={\`max-w-6xl mx-auto px-6 \${pad}\`}>
             <div className={\`\${section.align === 'center' ? 'text-center mx-auto' : ''} max-w-2xl mb-10\`}>
               {section.kicker && (
-                <p className="text-xs font-semibold tracking-wide mb-2" style={{ color: isDark ? '#93c5fd' : accent.hex }}>
+                <p className="text-xs font-semibold tracking-wide mb-2" style={trStyle('kicker', { color: isDark ? '#93c5fd' : accent.hex })}>
                   {section.kicker}
                 </p>
               )}
-              <h2 style={{ fontFamily: fonts.heading }} className="text-2xl md:text-3xl font-bold tracking-tight mb-3">
+              <h2 style={trStyle('title', { fontFamily: fonts.heading }, { baseFontPx: 30 })} className="text-2xl md:text-3xl font-bold tracking-tight mb-3">
                 {section.title}
               </h2>
-              {section.subtitle && <p className={\`text-sm md:text-base \${surface.muted}\`}>{section.subtitle}</p>}
+              {section.subtitle && <p style={trStyle('subtitle')} className={\`text-sm md:text-base \${surface.muted}\`}>{section.subtitle}</p>}
             </div>
             <div className={\`grid grid-cols-1 \${section.variant === 'columns-2' ? 'md:grid-cols-2' : 'md:grid-cols-3'} gap-6\`}>
               {(section.items || []).map((item) => (
-                <div key={item.id} className={\`p-6 border \${surface.border} \${surface.card} \${rad}\`}>
+                <div key={item.id} style={trStyle(\`item_\${item.id}\`)} className={\`p-6 border \${surface.border} \${surface.card} \${rad}\`}>
                   {item.icon && (
                     <div
                       style={{
@@ -604,7 +714,7 @@ export const PageSections: React.FC<{ section: PageSection; theme: PageTheme }> 
         {section.type === 'split' && (
           <section className={\`max-w-6xl mx-auto px-6 \${pad}\`}>
             <div className="grid grid-cols-1 lg:grid-cols-12 gap-10 items-center">
-              <div className={\`lg:col-span-6 \${section.variant === 'split-right' ? 'lg:order-2' : ''}\`}>
+              <div style={trStyle('image', undefined, { allowWidth: true })} className={\`lg:col-span-6 \${section.variant === 'split-right' ? 'lg:order-2' : ''}\`}>
                 <img
                   src={section.imageUrl}
                   alt={section.imageAlt || section.title}
@@ -614,16 +724,16 @@ export const PageSections: React.FC<{ section: PageSection; theme: PageTheme }> 
               </div>
               <div className={\`lg:col-span-6 \${section.variant === 'split-right' ? 'lg:order-1' : ''}\`}>
                 {section.kicker && (
-                  <p className="text-xs font-semibold tracking-wide mb-2" style={{ color: isDark ? '#93c5fd' : accent.hex }}>
+                  <p className="text-xs font-semibold tracking-wide mb-2" style={trStyle('kicker', { color: isDark ? '#93c5fd' : accent.hex })}>
                     {section.kicker}
                   </p>
                 )}
-                <h2 style={{ fontFamily: fonts.heading }} className="text-2xl md:text-3xl font-bold tracking-tight mb-4">
+                <h2 style={trStyle('title', { fontFamily: fonts.heading }, { baseFontPx: 30 })} className="text-2xl md:text-3xl font-bold tracking-tight mb-4">
                   {section.title}
                 </h2>
-                {section.body && <p className={\`text-base \${surface.muted} leading-relaxed mb-6\`}>{section.body}</p>}
+                {section.body && <p style={trStyle('body')} className={\`text-base \${surface.muted} leading-relaxed mb-6\`}>{section.body}</p>}
                 {section.primaryCta && (
-                  <a href="#detail" style={primaryBtn.style} className={primaryBtn.className}>
+                  <a href="#detail" style={trStyle('primaryCta', primaryBtn.style)} className={primaryBtn.className}>
                     <span>{section.primaryCta}</span>
                     {renderIcon(section.ctaIcon, 'w-4 h-4')}
                   </a>
@@ -637,20 +747,23 @@ export const PageSections: React.FC<{ section: PageSection; theme: PageTheme }> 
           <section className={\`max-w-6xl mx-auto px-6 \${pad}\`}>
             <div className={\`\${section.align === 'center' ? 'text-center mx-auto' : ''} max-w-2xl mb-10\`}>
               {section.kicker && (
-                <p className="text-xs font-semibold tracking-wide mb-2" style={{ color: isDark ? '#93c5fd' : accent.hex }}>
+                <p className="text-xs font-semibold tracking-wide mb-2" style={trStyle('kicker', { color: isDark ? '#93c5fd' : accent.hex })}>
                   {section.kicker}
                 </p>
               )}
-              <h2 style={{ fontFamily: fonts.heading }} className="text-2xl md:text-3xl font-bold tracking-tight mb-3">
+              <h2 style={trStyle('title', { fontFamily: fonts.heading }, { baseFontPx: 30 })} className="text-2xl md:text-3xl font-bold tracking-tight mb-3">
                 {section.title}
               </h2>
-              {section.subtitle && <p className={\`text-sm md:text-base \${surface.muted}\`}>{section.subtitle}</p>}
+              {section.subtitle && <p style={trStyle('subtitle')} className={\`text-sm md:text-base \${surface.muted}\`}>{section.subtitle}</p>}
             </div>
             <div className={\`grid grid-cols-1 \${section.variant === 'columns-2' ? 'md:grid-cols-2' : 'md:grid-cols-3'} gap-6\`}>
               {(section.items || []).map((tier) => (
                 <div
                   key={tier.id}
-                  style={tier.highlighted ? { borderColor: accent.hex, boxShadow: \`0 0 0 1px \${accent.hex}\` } : undefined}
+                  style={trStyle(
+                    \`item_\${tier.id}\`,
+                    tier.highlighted ? { borderColor: accent.hex, boxShadow: \`0 0 0 1px \${accent.hex}\` } : undefined
+                  )}
                   className={\`p-6 border \${surface.border} \${surface.card} \${rad} flex flex-col justify-between\`}
                 >
                   <div>
@@ -687,12 +800,12 @@ export const PageSections: React.FC<{ section: PageSection; theme: PageTheme }> 
 
         {section.type === 'testimonials' && (
           <section className={\`max-w-6xl mx-auto px-6 \${pad}\`}>
-            <h2 style={{ fontFamily: fonts.heading }} className="text-2xl md:text-3xl font-bold tracking-tight mb-8">
+            <h2 style={trStyle('title', { fontFamily: fonts.heading })} className="text-2xl md:text-3xl font-bold tracking-tight mb-8">
               {section.title}
             </h2>
             <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
               {(section.items || []).map((q) => (
-                <blockquote key={q.id} className={\`p-6 border \${surface.border} \${surface.card} \${rad}\`}>
+                <blockquote key={q.id} style={trStyle(\`item_\${q.id}\`)} className={\`p-6 border \${surface.border} \${surface.card} \${rad}\`}>
                   <p className="text-base leading-relaxed mb-4">“{q.description}”</p>
                   <footer>
                     <div className="text-sm font-semibold">{q.title}</div>
@@ -706,7 +819,7 @@ export const PageSections: React.FC<{ section: PageSection; theme: PageTheme }> 
 
         {section.type === 'faq' && (
           <section className={\`max-w-3xl mx-auto px-6 \${pad}\`}>
-            <h2 style={{ fontFamily: fonts.heading }} className="text-2xl md:text-3xl font-bold tracking-tight mb-8">
+            <h2 style={trStyle('title', { fontFamily: fonts.heading })} className="text-2xl md:text-3xl font-bold tracking-tight mb-8">
               {section.title}
             </h2>
             <div className={\`border-t \${surface.border}\`}>
@@ -733,25 +846,25 @@ export const PageSections: React.FC<{ section: PageSection; theme: PageTheme }> 
         {section.type === 'cta' && (
           <section className={\`max-w-4xl mx-auto px-6 \${pad} text-center\`}>
             {section.kicker && (
-              <p className="text-xs font-semibold tracking-wide mb-3" style={{ color: isDark ? '#93c5fd' : accent.hex }}>
+              <p className="text-xs font-semibold tracking-wide mb-3" style={trStyle('kicker', { color: isDark ? '#93c5fd' : accent.hex })}>
                 {section.kicker}
               </p>
             )}
-            <h2 style={{ fontFamily: fonts.heading }} className="text-3xl md:text-4xl font-bold tracking-tight mb-4">
+            <h2 style={trStyle('title', { fontFamily: fonts.heading }, { baseFontPx: 36 })} className="text-3xl md:text-4xl font-bold tracking-tight mb-4">
               {section.title}
             </h2>
             {section.subtitle && (
-              <p className={\`text-base \${surface.muted} max-w-xl mx-auto mb-8\`}>{section.subtitle}</p>
+              <p style={trStyle('subtitle')} className={\`text-base \${surface.muted} max-w-xl mx-auto mb-8\`}>{section.subtitle}</p>
             )}
             <div className="flex flex-wrap items-center justify-center gap-3">
               {section.primaryCta && (
-                <a href="#mulai" style={primaryBtn.style} className={primaryBtn.className}>
+                <a href="#mulai" style={trStyle('primaryCta', primaryBtn.style)} className={primaryBtn.className}>
                   <span>{section.primaryCta}</span>
                   {renderIcon(section.ctaIcon, 'w-4 h-4')}
                 </a>
               )}
               {section.secondaryCta && (
-                <a href="#info" className={\`px-5 py-2.5 text-sm font-semibold border \${surface.border} \${secBtnRad}\`}>
+                <a href="#info" style={trStyle('secondaryCta')} className={\`px-5 py-2.5 text-sm font-semibold border \${surface.border} \${secBtnRad}\`}>
                   {section.secondaryCta}
                 </a>
               )}
@@ -762,18 +875,18 @@ export const PageSections: React.FC<{ section: PageSection; theme: PageTheme }> 
         {section.type === 'footer' && (
           <footer className="max-w-6xl mx-auto px-6 py-10 flex flex-col md:flex-row items-start md:items-center justify-between gap-6">
             <div>
-              <div style={{ fontFamily: fonts.heading }} className="font-bold text-base mb-1 flex items-center gap-2">
+              <div style={trStyle('brand', { fontFamily: fonts.heading })} className="font-bold text-base mb-1 flex items-center gap-2">
                 {section.brandIcon && (
                   <span style={{ color: accent.hex }}>{renderIcon(section.brandIcon, 'w-4 h-4')}</span>
                 )}
                 <span>{section.brandName}</span>
               </div>
-              <p className={\`text-xs \${surface.muted}\`}>{section.title}</p>
-              {section.subtitle && <p className={\`text-xs \${surface.muted} mt-1\`}>{section.subtitle}</p>}
+              <p style={trStyle('title')} className={\`text-xs \${surface.muted}\`}>{section.title}</p>
+              {section.subtitle && <p style={trStyle('subtitle')} className={\`text-xs \${surface.muted} mt-1\`}>{section.subtitle}</p>}
             </div>
             <div className="flex flex-wrap items-center gap-6">
               {(section.links || []).map((l, idx) => (
-                <a key={idx} href={l.href} className={\`text-sm \${surface.muted} hover:opacity-80 whitespace-nowrap\`}>
+                <a key={idx} href={l.href} style={trStyle(\`link_\${idx}\`)} className={\`text-sm \${surface.muted} hover:opacity-80 whitespace-nowrap\`}>
                   {l.label}
                 </a>
               ))}
@@ -858,10 +971,27 @@ export async function generateProjectZipBlob(project: BuilderProject): Promise<B
         nextBgImage = dataUrlToAssetPath.get(nextBgImage);
       }
 
+      const nextFloating = sec.floatingElements?.map((fe) => {
+        let nextFeUrl = fe.imageUrl;
+        if (nextFeUrl && nextFeUrl.startsWith('data:image/')) {
+          if (!dataUrlToAssetPath.has(nextFeUrl)) {
+            const extMatch = nextFeUrl.match(/^data:image\/([a-zA-Z0-9+]+);/);
+            const ext = extMatch ? extMatch[1].replace('jpeg', 'jpg') : 'png';
+            dataUrlToAssetPath.set(
+              nextFeUrl,
+              `/src/assets/images/uploaded_el_${uploadCounter++}.${ext}`
+            );
+          }
+          nextFeUrl = dataUrlToAssetPath.get(nextFeUrl);
+        }
+        return nextFeUrl !== fe.imageUrl ? { ...fe, imageUrl: nextFeUrl } : fe;
+      });
+
       return {
         ...sec,
         imageUrl: nextImageUrl,
         backgroundImage: nextBgImage,
+        floatingElements: nextFloating,
       };
     }),
   };
@@ -887,6 +1017,11 @@ export async function generateProjectZipBlob(project: BuilderProject): Promise<B
     }
     if (sec.backgroundImage && sec.backgroundImage.startsWith('/src/assets/')) {
       assetPaths.add(sec.backgroundImage);
+    }
+    for (const fe of sec.floatingElements || []) {
+      if (fe.imageUrl && fe.imageUrl.startsWith('/src/assets/') && !dataUrlToAssetPath.has(fe.imageUrl)) {
+        assetPaths.add(fe.imageUrl);
+      }
     }
   }
 

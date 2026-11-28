@@ -129,6 +129,54 @@ function renderBgLayers(section: BuilderSection): string {
     ${overlay}`;
 }
 
+function getElTransformStyle(
+  section: BuilderSection,
+  key: string,
+  options?: { baseFontPx?: number; allowWidth?: boolean }
+): string {
+  const t = section.elementTransforms?.[key];
+  if (!t) return '';
+  const parts: string[] = [];
+  if (t.x || t.y) {
+    parts.push(`display:inline-block;transform:translate(${t.x || 0}px,${t.y || 0}px)`);
+  }
+  if (options?.allowWidth && t.widthPct && t.widthPct !== 100) {
+    parts.push(`width:${t.widthPct}%`);
+  }
+  if (options?.baseFontPx && t.fontSizeDelta) {
+    parts.push(`font-size:${Math.max(11, options.baseFontPx + t.fontSizeDelta)}px`);
+  }
+  return parts.join(';');
+}
+
+function renderFloatingElementsHtml(
+  section: BuilderSection,
+  accent: string,
+  btn: { cls: string; style: string },
+  rad: string,
+  borderCls: string
+): string {
+  const list = section.floatingElements || [];
+  if (list.length === 0) return '';
+  return list
+    .map((el) => {
+      const posStyle = `position:absolute;left:0;top:0;z-index:25;transform:translate(${el.x || 0}px,${el.y || 0}px);`;
+      if (el.kind === 'text') {
+        const fs = Math.max(12, 18 + (el.fontSize || 0));
+        return `<div style="${posStyle}font-size:${fs}px;" class="font-semibold heading-font px-2 py-1">${escapeHtml(el.text || 'Teks Baru')}</div>`;
+      }
+      if (el.kind === 'button') {
+        return `<a href="#aksi" style="${posStyle}${btn.style}" class="${btn.cls}">${escapeHtml(el.text || 'Klik Di Sini')}</a>`;
+      }
+      if (el.kind === 'icon') {
+        return `<div style="${posStyle}color:${escapeHtml(el.color || accent)};" class="p-2 rounded-lg bg-white/85 border border-slate-200 shadow-xs inline-flex items-center justify-center"><svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3l1.912 5.813a2 2 0 0 0 1.275 1.275L21 12l-5.813 1.912a2 2 0 0 0-1.275 1.275L12 21l-1.912-5.813a2 2 0 0 0-1.275-1.275L3 12l5.813-1.912a2 2 0 0 0 1.275-1.275L12 3z"/></svg></div>`;
+      }
+      const wPx = Math.max(120, Math.round(((el.width || 100) / 100) * 220));
+      return `<div style="${posStyle}width:${wPx}px;"><img src="${escapeHtml(el.imageUrl || '')}" alt="Gambar bebas" referrerpolicy="no-referrer" class="w-full h-36 object-cover ${rad} border ${borderCls} shadow-sm" /></div>`;
+    })
+    .join('\n    ');
+}
+
 function renderSectionHtml(section: BuilderSection, project: BuilderProject): string {
   const s = getSurfaceClasses(section);
   const pad = getSpacingClass(section.spacing);
@@ -151,24 +199,30 @@ function renderSectionHtml(section: BuilderSection, project: BuilderProject): st
         ? 'rounded-none'
         : 'rounded-lg';
   const bgLayers = renderBgLayers(section);
+  const floatingLayers = renderFloatingElementsHtml(section, accent, btn, rad, s.border);
+  const st = (key: string, opts?: { baseFontPx?: number; allowWidth?: boolean }) => {
+    const css = getElTransformStyle(section, key, opts);
+    return css ? ` style="${css}"` : '';
+  };
 
   if (section.type === 'navbar') {
     const linksHtml = (section.links || [])
       .map(
-        (l) =>
-          `<a href="${escapeHtml(l.href)}" class="${getNavLinkHtmlClass(section.navLinkStyle, s.mutedText, s.isDark)}">${escapeHtml(l.label)}</a>`
+        (l, idx) =>
+          `<a href="${escapeHtml(l.href)}"${st(`link_${idx}`)} class="${getNavLinkHtmlClass(section.navLinkStyle, s.mutedText, s.isDark)}">${escapeHtml(l.label)}</a>`
       )
       .join('\n          ');
     return `<header class="relative overflow-hidden ${s.bg} ${s.text} border-b ${s.border}">
     ${bgLayers}
+    ${floatingLayers}
     <div class="relative z-10 max-w-6xl mx-auto px-6 py-4 flex items-center justify-between gap-8">
-      <a href="#" class="text-lg font-bold tracking-tight whitespace-nowrap shrink-0 heading-font">${escapeHtml(section.brandName || 'Studio')}</a>
+      <a href="#"${st('brand')} class="text-lg font-bold tracking-tight whitespace-nowrap shrink-0 heading-font">${escapeHtml(section.brandName || 'Studio')}</a>
       <nav class="hidden md:flex items-center gap-4">
         ${linksHtml}
       </nav>
       ${
         section.primaryCta
-          ? `<a href="#kontak" style="${btn.style}" class="${btn.cls}">${escapeHtml(section.primaryCta)}</a>`
+          ? `<a href="#kontak" style="${btn.style};${getElTransformStyle(section, 'navCta')}" class="${btn.cls}">${escapeHtml(section.primaryCta)}</a>`
           : ''
       }
     </div>
@@ -180,13 +234,14 @@ function renderSectionHtml(section: BuilderSection, project: BuilderProject): st
     if (isCentered) {
       return `<section class="relative overflow-hidden ${s.bg} ${s.text} ${pad} border-b ${s.border}">
     ${bgLayers}
+    ${floatingLayers}
     <div class="relative z-10 max-w-4xl mx-auto px-6 text-center">
-      ${section.kicker ? `<p class="text-xs font-semibold tracking-wide mb-3" style="color:${s.isDark ? '#93c5fd' : accent}">${escapeHtml(section.kicker)}</p>` : ''}
-      <h1 class="text-4xl md:text-5xl font-bold tracking-tight leading-tight mb-5 heading-font">${escapeHtml(section.title)}</h1>
-      ${section.subtitle ? `<p class="text-base md:text-lg ${s.mutedText} max-w-2xl mx-auto mb-8 leading-relaxed">${escapeHtml(section.subtitle)}</p>` : ''}
+      ${section.kicker ? `<p class="text-xs font-semibold tracking-wide mb-3" style="color:${s.isDark ? '#93c5fd' : accent};${getElTransformStyle(section, 'kicker', { baseFontPx: 12 })}">${escapeHtml(section.kicker)}</p>` : ''}
+      <h1${st('title', { baseFontPx: 44 })} class="text-4xl md:text-5xl font-bold tracking-tight leading-tight mb-5 heading-font">${escapeHtml(section.title)}</h1>
+      ${section.subtitle ? `<p${st('subtitle', { baseFontPx: 17 })} class="text-base md:text-lg ${s.mutedText} max-w-2xl mx-auto mb-8 leading-relaxed">${escapeHtml(section.subtitle)}</p>` : ''}
       <div class="flex flex-wrap items-center justify-center gap-3">
-        ${section.primaryCta ? `<a href="#aksi" style="${btn.style}" class="${btn.cls}">${escapeHtml(section.primaryCta)}</a>` : ''}
-        ${section.secondaryCta ? `<a href="#detail" class="px-5 py-2.5 text-sm font-semibold border ${s.border} ${secBtnRad}">${escapeHtml(section.secondaryCta)}</a>` : ''}
+        ${section.primaryCta ? `<a href="#aksi" style="${btn.style};${getElTransformStyle(section, 'primaryCta')}" class="${btn.cls}">${escapeHtml(section.primaryCta)}</a>` : ''}
+        ${section.secondaryCta ? `<a href="#detail"${st('secondaryCta')} class="px-5 py-2.5 text-sm font-semibold border ${s.border} ${secBtnRad}">${escapeHtml(section.secondaryCta)}</a>` : ''}
       </div>
     </div>
   </section>`;
@@ -195,17 +250,18 @@ function renderSectionHtml(section: BuilderSection, project: BuilderProject): st
     const imageFirst = section.variant === 'split-left';
     return `<section class="relative overflow-hidden ${s.bg} ${s.text} ${pad} border-b ${s.border}">
     ${bgLayers}
+    ${floatingLayers}
     <div class="relative z-10 max-w-6xl mx-auto px-6 grid grid-cols-1 lg:grid-cols-12 gap-10 items-center">
       <div class="lg:col-span-6 ${imageFirst ? 'lg:order-2' : ''}">
-        ${section.kicker ? `<p class="text-xs font-semibold tracking-wide mb-3" style="color:${s.isDark ? '#93c5fd' : accent}">${escapeHtml(section.kicker)}</p>` : ''}
-        <h1 class="text-3xl md:text-5xl font-bold tracking-tight leading-tight mb-5 heading-font">${escapeHtml(section.title)}</h1>
-        ${section.subtitle ? `<p class="text-base md:text-lg ${s.mutedText} mb-8 leading-relaxed">${escapeHtml(section.subtitle)}</p>` : ''}
+        ${section.kicker ? `<p class="text-xs font-semibold tracking-wide mb-3" style="color:${s.isDark ? '#93c5fd' : accent};${getElTransformStyle(section, 'kicker', { baseFontPx: 12 })}">${escapeHtml(section.kicker)}</p>` : ''}
+        <h1${st('title', { baseFontPx: 42 })} class="text-3xl md:text-5xl font-bold tracking-tight leading-tight mb-5 heading-font">${escapeHtml(section.title)}</h1>
+        ${section.subtitle ? `<p${st('subtitle', { baseFontPx: 16 })} class="text-base md:text-lg ${s.mutedText} mb-8 leading-relaxed">${escapeHtml(section.subtitle)}</p>` : ''}
         <div class="flex flex-wrap items-center gap-3">
-          ${section.primaryCta ? `<a href="#aksi" style="${btn.style}" class="${btn.cls}">${escapeHtml(section.primaryCta)}</a>` : ''}
-          ${section.secondaryCta ? `<a href="#detail" class="px-5 py-2.5 text-sm font-semibold border ${s.border} ${secBtnRad}">${escapeHtml(section.secondaryCta)}</a>` : ''}
+          ${section.primaryCta ? `<a href="#aksi" style="${btn.style};${getElTransformStyle(section, 'primaryCta')}" class="${btn.cls}">${escapeHtml(section.primaryCta)}</a>` : ''}
+          ${section.secondaryCta ? `<a href="#detail"${st('secondaryCta')} class="px-5 py-2.5 text-sm font-semibold border ${s.border} ${secBtnRad}">${escapeHtml(section.secondaryCta)}</a>` : ''}
         </div>
       </div>
-      <div class="lg:col-span-6 ${imageFirst ? 'lg:order-1' : ''}">
+      <div class="lg:col-span-6 ${imageFirst ? 'lg:order-1' : ''}"${st('image', { allowWidth: true })}>
         <img src="${escapeHtml(section.imageUrl || '')}" alt="${escapeHtml(section.imageAlt || section.title)}" referrerpolicy="no-referrer" class="w-full h-80 md:h-[420px] object-cover ${rad} border ${s.border}" />
       </div>
     </div>
@@ -216,7 +272,7 @@ function renderSectionHtml(section: BuilderSection, project: BuilderProject): st
     const cols = section.variant === 'columns-2' ? 'md:grid-cols-2' : 'md:grid-cols-3';
     const itemsHtml = (section.items || [])
       .map(
-        (item) => `<div class="p-6 border ${s.border} ${s.cardBg} ${rad}">
+        (item) => `<div${st(`item_${item.id}`)} class="p-6 border ${s.border} ${s.cardBg} ${rad}">
         ${item.meta ? `<p class="text-xs font-medium ${s.mutedText} mb-2">${escapeHtml(item.meta)}</p>` : ''}
         <h3 class="text-lg font-semibold mb-2 heading-font">${escapeHtml(item.title)}</h3>
         <p class="text-sm ${s.mutedText} leading-relaxed">${escapeHtml(item.description)}</p>
@@ -225,11 +281,12 @@ function renderSectionHtml(section: BuilderSection, project: BuilderProject): st
       .join('\n      ');
     return `<section class="relative overflow-hidden ${s.bg} ${s.text} ${pad} border-b ${s.border}">
     ${bgLayers}
+    ${floatingLayers}
     <div class="relative z-10 max-w-6xl mx-auto px-6">
       <div class="${section.align === 'center' ? 'text-center mx-auto' : ''} max-w-2xl mb-12">
-        ${section.kicker ? `<p class="text-xs font-semibold tracking-wide mb-2" style="color:${s.isDark ? '#93c5fd' : accent}">${escapeHtml(section.kicker)}</p>` : ''}
-        <h2 class="text-2xl md:text-3xl font-bold tracking-tight mb-3 heading-font">${escapeHtml(section.title)}</h2>
-        ${section.subtitle ? `<p class="text-sm md:text-base ${s.mutedText}">${escapeHtml(section.subtitle)}</p>` : ''}
+        ${section.kicker ? `<p class="text-xs font-semibold tracking-wide mb-2" style="color:${s.isDark ? '#93c5fd' : accent};${getElTransformStyle(section, 'kicker')}">${escapeHtml(section.kicker)}</p>` : ''}
+        <h2${st('title', { baseFontPx: 30 })} class="text-2xl md:text-3xl font-bold tracking-tight mb-3 heading-font">${escapeHtml(section.title)}</h2>
+        ${section.subtitle ? `<p${st('subtitle')} class="text-sm md:text-base ${s.mutedText}">${escapeHtml(section.subtitle)}</p>` : ''}
       </div>
       <div class="grid grid-cols-1 ${cols} gap-6">
         ${itemsHtml}
@@ -242,15 +299,16 @@ function renderSectionHtml(section: BuilderSection, project: BuilderProject): st
     const imageFirst = section.variant !== 'split-right';
     return `<section class="relative overflow-hidden ${s.bg} ${s.text} ${pad} border-b ${s.border}">
     ${bgLayers}
+    ${floatingLayers}
     <div class="relative z-10 max-w-6xl mx-auto px-6 grid grid-cols-1 lg:grid-cols-12 gap-10 items-center">
-      <div class="lg:col-span-6 ${imageFirst ? 'lg:order-1' : 'lg:order-2'}">
+      <div class="lg:col-span-6 ${imageFirst ? 'lg:order-1' : 'lg:order-2'}"${st('image', { allowWidth: true })}>
         <img src="${escapeHtml(section.imageUrl || '')}" alt="${escapeHtml(section.imageAlt || section.title)}" referrerpolicy="no-referrer" class="w-full h-72 md:h-96 object-cover ${rad} border ${s.border}" />
       </div>
       <div class="lg:col-span-6 ${imageFirst ? 'lg:order-2' : 'lg:order-1'}">
-        ${section.kicker ? `<p class="text-xs font-semibold tracking-wide mb-2" style="color:${s.isDark ? '#93c5fd' : accent}">${escapeHtml(section.kicker)}</p>` : ''}
-        <h2 class="text-2xl md:text-3xl font-bold tracking-tight mb-4 heading-font">${escapeHtml(section.title)}</h2>
-        ${section.body ? `<p class="text-base ${s.mutedText} leading-relaxed mb-6">${escapeHtml(section.body)}</p>` : ''}
-        ${section.primaryCta ? `<a href="#detail" style="${btn.style}" class="${btn.cls}">${escapeHtml(section.primaryCta)}</a>` : ''}
+        ${section.kicker ? `<p class="text-xs font-semibold tracking-wide mb-2" style="color:${s.isDark ? '#93c5fd' : accent};${getElTransformStyle(section, 'kicker')}">${escapeHtml(section.kicker)}</p>` : ''}
+        <h2${st('title', { baseFontPx: 30 })} class="text-2xl md:text-3xl font-bold tracking-tight mb-4 heading-font">${escapeHtml(section.title)}</h2>
+        ${section.body ? `<p${st('body')} class="text-base ${s.mutedText} leading-relaxed mb-6">${escapeHtml(section.body)}</p>` : ''}
+        ${section.primaryCta ? `<a href="#detail" style="${btn.style};${getElTransformStyle(section, 'primaryCta')}" class="${btn.cls}">${escapeHtml(section.primaryCta)}</a>` : ''}
       </div>
     </div>
   </section>`;
@@ -263,7 +321,14 @@ function renderSectionHtml(section: BuilderSection, project: BuilderProject): st
         const feats = (tier.features || [])
           .map((f) => `<li class="text-sm ${s.mutedText} py-1.5 border-t ${s.border}">${escapeHtml(f)}</li>`)
           .join('\n          ');
-        return `<div class="p-6 border ${tier.highlighted ? 'ring-2' : s.border} ${s.cardBg} ${rad} flex flex-col justify-between" ${tier.highlighted ? `style="border-color:${accent}; --tw-ring-color:${accent}"` : ''}>
+        const tStyle = getElTransformStyle(section, `item_${tier.id}`);
+        const cardStyle = [
+          tier.highlighted ? `border-color:${accent}; --tw-ring-color:${accent}` : '',
+          tStyle,
+        ]
+          .filter(Boolean)
+          .join(';');
+        return `<div class="p-6 border ${tier.highlighted ? 'ring-2' : s.border} ${s.cardBg} ${rad} flex flex-col justify-between" ${cardStyle ? `style="${cardStyle}"` : ''}>
         <div>
           ${tier.meta ? `<p class="text-xs font-medium ${s.mutedText} mb-1">${escapeHtml(tier.meta)}</p>` : ''}
           <h3 class="text-lg font-bold heading-font">${escapeHtml(tier.title)}</h3>
@@ -277,11 +342,12 @@ function renderSectionHtml(section: BuilderSection, project: BuilderProject): st
       .join('\n      ');
     return `<section class="relative overflow-hidden ${s.bg} ${s.text} ${pad} border-b ${s.border}">
     ${bgLayers}
+    ${floatingLayers}
     <div class="relative z-10 max-w-6xl mx-auto px-6">
       <div class="${section.align === 'center' ? 'text-center mx-auto' : ''} max-w-2xl mb-12">
-        ${section.kicker ? `<p class="text-xs font-semibold tracking-wide mb-2" style="color:${s.isDark ? '#93c5fd' : accent}">${escapeHtml(section.kicker)}</p>` : ''}
-        <h2 class="text-2xl md:text-3xl font-bold tracking-tight mb-3 heading-font">${escapeHtml(section.title)}</h2>
-        ${section.subtitle ? `<p class="text-sm md:text-base ${s.mutedText}">${escapeHtml(section.subtitle)}</p>` : ''}
+        ${section.kicker ? `<p class="text-xs font-semibold tracking-wide mb-2" style="color:${s.isDark ? '#93c5fd' : accent};${getElTransformStyle(section, 'kicker')}">${escapeHtml(section.kicker)}</p>` : ''}
+        <h2${st('title', { baseFontPx: 30 })} class="text-2xl md:text-3xl font-bold tracking-tight mb-3 heading-font">${escapeHtml(section.title)}</h2>
+        ${section.subtitle ? `<p${st('subtitle')} class="text-sm md:text-base ${s.mutedText}">${escapeHtml(section.subtitle)}</p>` : ''}
       </div>
       <div class="grid grid-cols-1 ${cols} gap-6">
         ${itemsHtml}
@@ -293,7 +359,7 @@ function renderSectionHtml(section: BuilderSection, project: BuilderProject): st
   if (section.type === 'testimonials') {
     const itemsHtml = (section.items || [])
       .map(
-        (q) => `<blockquote class="p-6 border ${s.border} ${s.cardBg} ${rad}">
+        (q) => `<blockquote${st(`item_${q.id}`)} class="p-6 border ${s.border} ${s.cardBg} ${rad}">
         <p class="text-base leading-relaxed mb-4">"${escapeHtml(q.description)}"</p>
         <footer>
           <div class="text-sm font-semibold">${escapeHtml(q.title)}</div>
@@ -304,10 +370,11 @@ function renderSectionHtml(section: BuilderSection, project: BuilderProject): st
       .join('\n      ');
     return `<section class="relative overflow-hidden ${s.bg} ${s.text} ${pad} border-b ${s.border}">
     ${bgLayers}
+    ${floatingLayers}
     <div class="relative z-10 max-w-6xl mx-auto px-6">
       <div class="max-w-2xl mb-10">
-        ${section.kicker ? `<p class="text-xs font-semibold tracking-wide mb-2" style="color:${s.isDark ? '#93c5fd' : accent}">${escapeHtml(section.kicker)}</p>` : ''}
-        <h2 class="text-2xl md:text-3xl font-bold tracking-tight heading-font">${escapeHtml(section.title)}</h2>
+        ${section.kicker ? `<p class="text-xs font-semibold tracking-wide mb-2" style="color:${s.isDark ? '#93c5fd' : accent};${getElTransformStyle(section, 'kicker')}">${escapeHtml(section.kicker)}</p>` : ''}
+        <h2${st('title')} class="text-2xl md:text-3xl font-bold tracking-tight heading-font">${escapeHtml(section.title)}</h2>
       </div>
       <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
         ${itemsHtml}
@@ -330,10 +397,11 @@ function renderSectionHtml(section: BuilderSection, project: BuilderProject): st
       .join('\n      ');
     return `<section class="relative overflow-hidden ${s.bg} ${s.text} ${pad} border-b ${s.border}">
     ${bgLayers}
+    ${floatingLayers}
     <div class="relative z-10 max-w-3xl mx-auto px-6">
       <div class="mb-8">
-        ${section.kicker ? `<p class="text-xs font-semibold tracking-wide mb-2" style="color:${s.isDark ? '#93c5fd' : accent}">${escapeHtml(section.kicker)}</p>` : ''}
-        <h2 class="text-2xl md:text-3xl font-bold tracking-tight heading-font">${escapeHtml(section.title)}</h2>
+        ${section.kicker ? `<p class="text-xs font-semibold tracking-wide mb-2" style="color:${s.isDark ? '#93c5fd' : accent};${getElTransformStyle(section, 'kicker')}">${escapeHtml(section.kicker)}</p>` : ''}
+        <h2${st('title')} class="text-2xl md:text-3xl font-bold tracking-tight heading-font">${escapeHtml(section.title)}</h2>
       </div>
       <div class="border-t ${s.border}">
         ${itemsHtml}
@@ -345,13 +413,14 @@ function renderSectionHtml(section: BuilderSection, project: BuilderProject): st
   if (section.type === 'cta') {
     return `<section class="relative overflow-hidden ${s.bg} ${s.text} ${pad} border-b ${s.border}">
     ${bgLayers}
+    ${floatingLayers}
     <div class="relative z-10 max-w-4xl mx-auto px-6 text-center">
-      ${section.kicker ? `<p class="text-xs font-semibold tracking-wide mb-3" style="color:${s.isDark ? '#93c5fd' : accent}">${escapeHtml(section.kicker)}</p>` : ''}
-      <h2 class="text-3xl md:text-4xl font-bold tracking-tight mb-4 heading-font">${escapeHtml(section.title)}</h2>
-      ${section.subtitle ? `<p class="text-base ${s.mutedText} max-w-xl mx-auto mb-8">${escapeHtml(section.subtitle)}</p>` : ''}
+      ${section.kicker ? `<p class="text-xs font-semibold tracking-wide mb-3" style="color:${s.isDark ? '#93c5fd' : accent};${getElTransformStyle(section, 'kicker')}">${escapeHtml(section.kicker)}</p>` : ''}
+      <h2${st('title', { baseFontPx: 36 })} class="text-3xl md:text-4xl font-bold tracking-tight mb-4 heading-font">${escapeHtml(section.title)}</h2>
+      ${section.subtitle ? `<p${st('subtitle')} class="text-base ${s.mutedText} max-w-xl mx-auto mb-8">${escapeHtml(section.subtitle)}</p>` : ''}
       <div class="flex flex-wrap items-center justify-center gap-3">
-        ${section.primaryCta ? `<a href="#mulai" style="${btn.style}" class="${btn.cls}">${escapeHtml(section.primaryCta)}</a>` : ''}
-        ${section.secondaryCta ? `<a href="#info" class="px-5 py-2.5 text-sm font-semibold border ${s.border} ${secBtnRad}">${escapeHtml(section.secondaryCta)}</a>` : ''}
+        ${section.primaryCta ? `<a href="#mulai" style="${btn.style};${getElTransformStyle(section, 'primaryCta')}" class="${btn.cls}">${escapeHtml(section.primaryCta)}</a>` : ''}
+        ${section.secondaryCta ? `<a href="#info"${st('secondaryCta')} class="px-5 py-2.5 text-sm font-semibold border ${s.border} ${secBtnRad}">${escapeHtml(section.secondaryCta)}</a>` : ''}
       </div>
     </div>
   </section>`;
@@ -359,17 +428,18 @@ function renderSectionHtml(section: BuilderSection, project: BuilderProject): st
 
   const footerLinks = (section.links || [])
     .map(
-      (l) =>
-        `<a href="${escapeHtml(l.href)}" class="text-sm ${s.mutedText} hover:opacity-80 whitespace-nowrap">${escapeHtml(l.label)}</a>`
+      (l, idx) =>
+        `<a href="${escapeHtml(l.href)}"${st(`link_${idx}`)} class="text-sm ${s.mutedText} hover:opacity-80 whitespace-nowrap">${escapeHtml(l.label)}</a>`
     )
     .join('\n        ');
   return `<footer class="relative overflow-hidden ${s.bg} ${s.text} py-10">
     ${bgLayers}
+    ${floatingLayers}
     <div class="relative z-10 max-w-6xl mx-auto px-6 flex flex-col md:flex-row items-start md:items-center justify-between gap-6">
       <div>
-        <div class="font-bold text-base heading-font mb-1">${escapeHtml(section.brandName || 'Studio')}</div>
-        <p class="text-xs ${s.mutedText}">${escapeHtml(section.title)}</p>
-        ${section.subtitle ? `<p class="text-xs ${s.mutedText} mt-1">${escapeHtml(section.subtitle)}</p>` : ''}
+        <div${st('brand')} class="font-bold text-base heading-font mb-1">${escapeHtml(section.brandName || 'Studio')}</div>
+        <p${st('title')} class="text-xs ${s.mutedText}">${escapeHtml(section.title)}</p>
+        ${section.subtitle ? `<p${st('subtitle')} class="text-xs ${s.mutedText} mt-1">${escapeHtml(section.subtitle)}</p>` : ''}
       </div>
       <div class="flex flex-wrap items-center gap-6">
         ${footerLinks}

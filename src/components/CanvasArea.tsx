@@ -17,6 +17,7 @@ import {
 import {
   BackgroundOverlay,
   BuilderSection,
+  FloatingCanvasElement,
   PageTheme,
   SectionType,
   ViewportDevice,
@@ -30,6 +31,15 @@ interface CanvasAreaProps {
   theme: PageTheme;
   selectedId: string | null;
   onSelectSection: (id: string | null) => void;
+  selectedElementKey: string | null;
+  onSelectElement: (key: string | null) => void;
+  onUpdateSection: (id: string, patch: Partial<BuilderSection>) => void;
+  onDropFloatingElement: (
+    sectionId: string,
+    kind: FloatingCanvasElement['kind'],
+    x: number,
+    y: number
+  ) => void;
   device: ViewportDevice;
   onChangeDevice: (device: ViewportDevice) => void;
   isPreviewMode: boolean;
@@ -61,6 +71,10 @@ export const CanvasArea: React.FC<CanvasAreaProps> = ({
   theme,
   selectedId,
   onSelectSection,
+  selectedElementKey,
+  onSelectElement,
+  onUpdateSection,
+  onDropFloatingElement,
   device,
   onChangeDevice,
   isPreviewMode,
@@ -83,6 +97,7 @@ export const CanvasArea: React.FC<CanvasAreaProps> = ({
   const [dropSlotIndex, setDropSlotIndex] = useState<number | null>(null);
   const [draggingSectionId, setDraggingSectionId] = useState<string | null>(null);
   const [bgHoverSectionId, setBgHoverSectionId] = useState<string | null>(null);
+  const [floatHoverSectionId, setFloatHoverSectionId] = useState<string | null>(null);
 
   const canvasWidthClass =
     device === 'mobile'
@@ -92,7 +107,12 @@ export const CanvasArea: React.FC<CanvasAreaProps> = ({
         : 'w-full max-w-[1200px]';
 
   const handleSlotDragOver = (e: React.DragEvent, index: number) => {
-    if (e.dataTransfer.types.includes('application/x-rancang-bg')) return;
+    if (
+      e.dataTransfer.types.includes('application/x-rancang-bg') ||
+      e.dataTransfer.types.includes('application/x-rancang-floating-kind')
+    ) {
+      return;
+    }
     e.preventDefault();
     e.dataTransfer.dropEffect = draggingSectionId ? 'move' : 'copy';
     if (dropSlotIndex !== index) {
@@ -101,7 +121,12 @@ export const CanvasArea: React.FC<CanvasAreaProps> = ({
   };
 
   const handleSlotDrop = (e: React.DragEvent, index: number) => {
-    if (e.dataTransfer.types.includes('application/x-rancang-bg')) return;
+    if (
+      e.dataTransfer.types.includes('application/x-rancang-bg') ||
+      e.dataTransfer.types.includes('application/x-rancang-floating-kind')
+    ) {
+      return;
+    }
     e.preventDefault();
     setDropSlotIndex(null);
 
@@ -123,6 +148,7 @@ export const CanvasArea: React.FC<CanvasAreaProps> = ({
     e.preventDefault();
     setDropSlotIndex(null);
     setBgHoverSectionId(null);
+    setFloatHoverSectionId(null);
     const newBlockType = e.dataTransfer.getData('application/x-rancang-block-type') as SectionType;
     if (newBlockType) {
       onDropNewBlock(newBlockType, sections.length);
@@ -135,6 +161,14 @@ export const CanvasArea: React.FC<CanvasAreaProps> = ({
       e.dataTransfer.dropEffect = 'copy';
       if (bgHoverSectionId !== sectionId) {
         setBgHoverSectionId(sectionId);
+      }
+      return;
+    }
+    if (e.dataTransfer.types.includes('application/x-rancang-floating-kind')) {
+      e.preventDefault();
+      e.dataTransfer.dropEffect = 'copy';
+      if (floatHoverSectionId !== sectionId) {
+        setFloatHoverSectionId(sectionId);
       }
     }
   };
@@ -151,6 +185,20 @@ export const CanvasArea: React.FC<CanvasAreaProps> = ({
       } catch {
         // ignore malformed drag payload
       }
+      return;
+    }
+
+    const floatKind = e.dataTransfer.getData(
+      'application/x-rancang-floating-kind'
+    ) as FloatingCanvasElement['kind'];
+    if (floatKind) {
+      e.preventDefault();
+      e.stopPropagation();
+      setFloatHoverSectionId(null);
+      const rect = e.currentTarget.getBoundingClientRect();
+      const relX = Math.max(12, Math.min(rect.width - 140, Math.round(e.clientX - rect.left - 40)));
+      const relY = Math.max(12, Math.min(rect.height - 48, Math.round(e.clientY - rect.top - 16)));
+      onDropFloatingElement(sectionId, floatKind, relX, relY);
     }
   };
 
@@ -289,12 +337,19 @@ export const CanvasArea: React.FC<CanvasAreaProps> = ({
       {/* Scrollable Canvas Viewport */}
       <div
         className="flex-1 overflow-y-auto p-6 md:p-8 flex justify-center items-start"
-        onClick={() => !isPreviewMode && onSelectSection(null)}
+        onClick={() => {
+          if (!isPreviewMode) {
+            onSelectElement(null);
+            onSelectSection(null);
+          }
+        }}
         onDragOver={(e) => e.preventDefault()}
         onDrop={handleCanvasBackgroundDrop}
       >
         <div
-          className={`${canvasWidthClass} bg-white shadow-sm border border-slate-200 rounded-lg overflow-hidden transition-[width] duration-200 min-h-[540px] relative`}
+          className={`${canvasWidthClass} bg-white shadow-sm border border-slate-200 rounded-lg ${
+            isPreviewMode ? 'overflow-hidden' : ''
+          } transition-[width] duration-200 min-h-[540px] relative`}
           onClick={(e) => e.stopPropagation()}
         >
           {/* Loading Overlay during AI Generation */}
@@ -365,33 +420,48 @@ export const CanvasArea: React.FC<CanvasAreaProps> = ({
               {sections.map((section, idx) => {
                 const isSelected = !isPreviewMode && selectedId === section.id;
                 const isBgDropHover = !isPreviewMode && bgHoverSectionId === section.id;
+                const isFloatDropHover = !isPreviewMode && floatHoverSectionId === section.id;
                 return (
                   <React.Fragment key={section.id}>
                     <div
                       onClick={() => {
-                        if (!isPreviewMode) onSelectSection(section.id);
+                        if (!isPreviewMode) {
+                          onSelectElement(null);
+                          onSelectSection(section.id);
+                        }
                       }}
                       onDragOver={(e) => handleSectionDragOver(e, section.id)}
-                      onDragLeave={() =>
-                        setBgHoverSectionId((prev) => (prev === section.id ? null : prev))
-                      }
+                      onDragLeave={() => {
+                        setBgHoverSectionId((prev) => (prev === section.id ? null : prev));
+                        setFloatHoverSectionId((prev) => (prev === section.id ? null : prev));
+                      }}
                       onDrop={(e) => handleSectionDrop(e, section.id)}
                       className={`relative group ${
                         !isPreviewMode ? 'cursor-pointer' : ''
                       } ${
                         isBgDropHover
                           ? 'ring-2 ring-inset ring-emerald-500 z-30'
-                          : isSelected
-                            ? 'ring-2 ring-inset ring-blue-600 z-20'
-                            : !isPreviewMode
-                              ? 'hover:ring-1 hover:ring-inset hover:ring-blue-400'
-                              : ''
+                          : isFloatDropHover
+                            ? 'ring-2 ring-inset ring-blue-500 z-30'
+                            : isSelected
+                              ? 'ring-2 ring-inset ring-blue-600 z-20'
+                              : !isPreviewMode
+                                ? 'hover:ring-1 hover:ring-inset hover:ring-blue-400'
+                                : ''
                       }`}
                     >
                       {isBgDropHover && (
                         <div className="absolute inset-0 bg-emerald-600/15 z-30 pointer-events-none flex items-center justify-center">
                           <span className="px-3 py-1.5 bg-slate-900 text-white text-xs font-semibold rounded-md shadow">
                             Lepas untuk pasang latar belakang di blok ini
+                          </span>
+                        </div>
+                      )}
+
+                      {isFloatDropHover && (
+                        <div className="absolute inset-0 bg-blue-600/10 z-30 pointer-events-none flex items-center justify-center">
+                          <span className="px-3 py-1.5 bg-blue-600 text-white text-xs font-semibold rounded-md shadow">
+                            Lepas untuk taruh elemen bebas di sini
                           </span>
                         </div>
                       )}
@@ -465,6 +535,9 @@ export const CanvasArea: React.FC<CanvasAreaProps> = ({
                         theme={theme}
                         device={device}
                         isPreview={isPreviewMode}
+                        selectedElementKey={selectedElementKey}
+                        onSelectElement={onSelectElement}
+                        onUpdateSection={(patch) => onUpdateSection(section.id, patch)}
                       />
                     </div>
                     {renderDropSlot(idx + 1)}

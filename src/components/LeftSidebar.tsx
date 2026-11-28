@@ -2,11 +2,15 @@ import React, { useRef, useState } from 'react';
 import {
   BookmarkPlus,
   GripVertical,
+  Image as ImageIcon,
   LayoutGrid,
   Loader2,
+  MousePointerClick,
   Plus,
   Search,
+  Smile,
   Trash2,
+  Type as TypeIcon,
   Upload,
   Wand2,
 } from 'lucide-react';
@@ -21,6 +25,7 @@ import {
   BackgroundOverlay,
   BackgroundPattern,
   CustomTemplate,
+  FloatingCanvasElement,
   SectionType,
   UploadedBackground,
 } from '../types/builder';
@@ -32,6 +37,7 @@ interface LeftSidebarProps {
   activeTab: SidebarTab;
   onTabChange: (tab: SidebarTab) => void;
   onAddBlock: (type: SectionType) => void;
+  onAddFloatingElement: (kind: FloatingCanvasElement['kind']) => void;
   templates: CustomTemplate[];
   onApplyTemplate: (template: CustomTemplate) => void;
   onDeleteCustomTemplate: (id: string) => void;
@@ -63,6 +69,7 @@ export const LeftSidebar: React.FC<LeftSidebarProps> = ({
   activeTab,
   onTabChange,
   onAddBlock,
+  onAddFloatingElement,
   templates,
   onApplyTemplate,
   onDeleteCustomTemplate,
@@ -121,6 +128,15 @@ export const LeftSidebar: React.FC<LeftSidebarProps> = ({
   const handleDragStartBlock = (e: React.DragEvent, type: SectionType) => {
     e.dataTransfer.setData('application/x-rancang-block-type', type);
     e.dataTransfer.setData('text/plain', type);
+    e.dataTransfer.effectAllowed = 'copy';
+  };
+
+  const handleDragStartFloating = (
+    e: React.DragEvent,
+    kind: FloatingCanvasElement['kind']
+  ) => {
+    e.dataTransfer.setData('application/x-rancang-floating-kind', kind);
+    e.dataTransfer.setData('text/plain', kind);
     e.dataTransfer.effectAllowed = 'copy';
   };
 
@@ -204,13 +220,45 @@ export const LeftSidebar: React.FC<LeftSidebarProps> = ({
       <div className="flex-1 overflow-y-auto p-3">
         {activeTab === 'blocks' && (
           <div className="space-y-3">
+            {/* Elemen Bebas Gaya Canva */}
+            <div className="p-2.5 bg-slate-50 border border-slate-200 rounded-lg space-y-2">
+              <div className="flex items-center justify-between">
+                <span className="text-[11px] font-semibold text-slate-800">
+                  Elemen Bebas (Canva)
+                </span>
+                <span className="text-[10px] text-slate-500">Seret / Klik</span>
+              </div>
+              <div className="grid grid-cols-2 gap-1.5">
+                {(
+                  [
+                    { kind: 'text', label: 'Teks', Icon: TypeIcon },
+                    { kind: 'image', label: 'Gambar', Icon: ImageIcon },
+                    { kind: 'icon', label: 'Ikon', Icon: Smile },
+                    { kind: 'button', label: 'Tombol', Icon: MousePointerClick },
+                  ] as const
+                ).map(({ kind, label, Icon }) => (
+                  <button
+                    key={kind}
+                    type="button"
+                    draggable
+                    onDragStart={(e) => handleDragStartFloating(e, kind)}
+                    onClick={() => onAddFloatingElement(kind)}
+                    className="flex items-center gap-2 px-2.5 py-2 bg-white border border-slate-200 rounded-md hover:border-blue-600 hover:text-blue-600 text-xs font-medium text-slate-700 transition-colors cursor-grab active:cursor-grabbing"
+                  >
+                    <Icon className="w-3.5 h-3.5 shrink-0" />
+                    <span>{label}</span>
+                  </button>
+                ))}
+              </div>
+            </div>
+
             <div className="relative">
               <Search className="w-3.5 h-3.5 text-slate-400 absolute left-2.5 top-1/2 -translate-y-1/2" />
               <input
                 type="text"
                 value={blockSearch}
                 onChange={(e) => setBlockSearch(e.target.value)}
-                placeholder="Cari blok komponen..."
+                placeholder="Cari blok seksi..."
                 className="w-full pl-8 pr-3 py-1.5 text-xs bg-slate-50 border border-slate-200 rounded-md focus:outline-none focus:border-blue-600"
               />
             </div>
@@ -233,7 +281,7 @@ export const LeftSidebar: React.FC<LeftSidebarProps> = ({
             </div>
 
             <p className="text-[11px] text-slate-500 leading-snug">
-              Seret komponen ke kanvas atau klik tambah untuk menyisipkan di bagian bawah.
+              Seret blok seksi ke kanvas, atau klik elemen di dalam kanvas untuk edit langsung dan geser posisi.
             </p>
 
             <div className="space-y-2">
